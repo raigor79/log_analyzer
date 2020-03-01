@@ -50,12 +50,12 @@ def main():
                 id_file = open(sys.argv[2])
                 try:
                     for string_read in id_file.readlines():
-                        key, val = string_read.strip().split('=')
-                        key, val = key.strip(), val.strip()
-                        if val.isdigit():
-                            val = int(val)
+                        if string_read != '\n':
+                            key, val = string_read.strip().split('=')
+                            key, val = key.strip(), val.strip()
+                            if val.isdigit():
+                                val = int(val)
                         config_from_file[key] = val
-                    print(config_from_file)
                 except Exception as error_work_config:
                     sys.exit(error_work_config)
                 finally:
@@ -64,15 +64,14 @@ def main():
                 sys.exit(error_open_config)
             finally:
                 for key in config:
-                    #if type(config_from_file[key]) == type(config[key]):
-                    pass
-
+                    if config_from_file.get(key) != None:
+                        if type(config_from_file[key]) == type(config[key]):
+                            config[key] = config_from_file[key]
         else:
             sys.exit(error_message_comnd_line % sys.argv[0])
 
-
-
     print('OK')
+
 
 
 
