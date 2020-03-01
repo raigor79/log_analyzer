@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import sys, os
-
+import sys
+import os
+import re
 
 error_message_comnd_line = '''Unknown option.
 Usage: python %s [--config] [file]
@@ -24,22 +25,28 @@ config = {
 }
 
 
-def save_conf(filename):
-    file = open(filename, 'w')
-    for key, value in config.items():
-        file.write('{} = {}\n'.format(key, value))
-    file.close()
-
-def loading_config_values(filename):
-    """function loads the config file
-    and merges with the default config
+def search_last_log(log_dir: str) -> str:
     """
-    config_from_file = {}
-    with open(filename) as inp:
-        for i in inp.readlines():
-            key1, val1 = i.strip().split(' = ')
-            config_from_file[key1] = val1
-    print(config_from_file)
+    search function for the last log file in the directory
+    :param log_dir -  the directory log file:
+    :return:  last_log  - filename last log file
+    """
+    res = []
+    try:
+        files = os.listdir(log_dir)
+    except Exception as error_message:
+        print(error_message)
+    finally:
+        for index in range(0, len(files)):
+            if re.match('nginx-access-ui.log-', files[index]):
+                res.append(files[index])
+        last_log = res[0]
+        last = int(re.search('\d+', last_log).group(0))
+        for index in range(1, len(res)):
+            tres = int(re.search('\d+', res[index]).group(0))
+            if last < tres:
+                last_log = res[index]
+    return last_log
 
 
 def main():
@@ -64,15 +71,14 @@ def main():
                 sys.exit(error_open_config)
             finally:
                 for key in config:
-                    if config_from_file.get(key) != None:
+                    if config_from_file.get(key) is not None:
                         if type(config_from_file[key]) == type(config[key]):
                             config[key] = config_from_file[key]
         else:
             sys.exit(error_message_comnd_line % sys.argv[0])
 
     print('OK')
-
-
+    print(search_last_log(config['LOG_DIR']))
 
 
 if __name__ == "__main__":
