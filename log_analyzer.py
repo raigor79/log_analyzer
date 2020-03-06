@@ -3,6 +3,11 @@
 import sys
 import os
 import re
+import gzip
+
+
+MASK_URL = r'(?<=GET\s)(/\S+)'
+MASK_REQUEST_TIME = r'(?<=\ )\d+\.\d+?$'
 
 error_message_comnd_line = '''Unknown option.
 Usage: python %s [--config] [file]
@@ -27,7 +32,7 @@ config = {
 
 def search_last_log(config: dict) -> str:
     """
-    search function for the last log file in the directory
+    search function for the last log file in the directory 'LOG_DIR'
     :param config -  dictionary  with the directory log file:
     :return:  last_log  - filename last log file
     """
@@ -48,12 +53,20 @@ def search_last_log(config: dict) -> str:
                 tres = int(re.search(r'\d+', res[index]).group(0))
                 if last < tres:
                     last_log = res[index]
+                    last = tres
         else:
             last_log = None
     return last_log
 
 
 def report_processing_check(config: dict, last_log: str) -> bool:
+    """
+    Function processing check reporting the latest log
+    :param config: dictionary  with the directory report file 'REPORT_DIR'
+    :param last_log: name last log file
+    :return: True if the file exists in the directory or
+    False if the file is not in the directory
+    """
     mask_rep = r'report-\d\d\d\d\.\d\d\.\d\d((\.html\b))'
     try:
         files = os.listdir(config["REPORT_DIR"])
@@ -73,6 +86,29 @@ def report_processing_check(config: dict, last_log: str) -> bool:
             else:
                 flag_processing_check += False
     return bool(flag_processing_check)
+
+def parsing_string(string : str, template: list) -> list:
+    pars_list = []
+    for temp in template:
+        pars_list.append(re.search(temp,string).group())
+    return pars_list
+
+
+
+def parsing_log(config : config, log_file_name : str) -> list:
+    log_file_path = config["LOG_DIR"]+'/'+log_file_name
+    if log_file_path.endswith(".gz"):
+        log_file = gzip.open(log_file_path, 'rb')
+    else:
+        log_file = open(log_file_path)
+    for log_string in log_file:
+        parsed_list = parsing_string(log_string,[MASK_URL, MASK_REQUEST_TIME])
+        print(log_string)
+
+    log_file.close()
+
+
+
 
 def main():
     if len(sys.argv) != 1:
@@ -104,7 +140,7 @@ def main():
 
     print('OK')
     print(search_last_log(config))
-    print(report_processing_check(config, search_last_log(config)))
+    parsing_log(config, search_last_log(config))
 
 
 if __name__ == "__main__":
