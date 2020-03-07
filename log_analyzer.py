@@ -5,7 +5,6 @@ import os
 import re
 import gzip
 
-
 MASK_URL = r'(?<=GET\s)(/\S+)'
 MASK_REQUEST_TIME = r'(?<=\ )\d+\.\d+?$'
 
@@ -74,8 +73,8 @@ def report_processing_check(config: dict, last_log: str) -> bool:
         print(error_message)
     finally:
         res = []
-        mask_date = re.findall(r'\d+',last_log)
-        mask_rep_last = r''+mask_date[0][:4]+'.'+mask_date[0][4:6]+'.'+mask_date[0][6:]
+        mask_date = re.findall(r'\d+', last_log)
+        mask_rep_last = r'' + mask_date[0][:4] + '.' + mask_date[0][4:6] + '.' + mask_date[0][6:]
         for index in range(0, len(files)):
             if re.fullmatch(mask_rep, files[index]):
                 res.append(files[index])
@@ -87,27 +86,34 @@ def report_processing_check(config: dict, last_log: str) -> bool:
                 flag_processing_check += False
     return bool(flag_processing_check)
 
-def parsing_string(string : str, template: list) -> list:
+
+def parsing_string(string: str, template: list) -> list:
     pars_list = []
     for temp in template:
-        pars_list.append(re.search(temp,string).group())
+        parsed_result = re.search(temp, string);
+        if parsed_result is not None:
+            pars_list.append(parsed_result.group())
+        else:
+            pars_list.append(None)
     return pars_list
 
 
-
-def parsing_log(config : config, log_file_name : str) -> list:
-    log_file_path = config["LOG_DIR"]+'/'+log_file_name
+def parsing_string_log(config: config, log_file_name: str) -> list:
+    '''
+    Function-generator read log string from file with filename 'log_file_name'
+    :param config: dictionary with structure containing the directory log file 'LOG_DIR'
+    :param log_file_name: name processed log file
+    :return: structure list [url:str, request_time:str]
+    '''
+    log_file_path = config["LOG_DIR"] + '/' + log_file_name
     if log_file_path.endswith(".gz"):
         log_file = gzip.open(log_file_path, 'rb')
     else:
         log_file = open(log_file_path)
     for log_string in log_file:
-        parsed_list = parsing_string(log_string,[MASK_URL, MASK_REQUEST_TIME])
-        print(log_string)
-
+        parsed_list = parsing_string(log_string, [MASK_URL, MASK_REQUEST_TIME])
+        yield parsed_list
     log_file.close()
-
-
 
 
 def main():

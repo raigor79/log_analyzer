@@ -18,7 +18,7 @@ class MyTestCase(unittest.TestCase):
             "/api/v2/group/1769230/banners", "0.628"],
                          False)
         self.assertEqual(log_analyzer.parsing_string(string3, [MASK_URL, MASK_REQUEST_TIME]), [
-            "", "0.628"],
+            None, "0.628"],
                          False)
 
 if __name__ == '__main__':
