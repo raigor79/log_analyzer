@@ -5,7 +5,10 @@ import os
 import re
 import gzip
 
+
+# url regular expression pattern
 MASK_URL = r'(?<=GET\s)(/\S+)'
+# request time regular expression pattern
 MASK_REQUEST_TIME = r'(?<=\ )\d+\.\d+?$'
 
 error_message_comnd_line = '''Unknown option.
@@ -88,6 +91,13 @@ def report_processing_check(config: dict, last_log: str) -> bool:
 
 
 def parsing_string(string: str, template: list) -> list:
+    """
+    Function parsing string 'string' pattern list template
+    :param string: any string
+    :param template: template [template1, [template2],...[]],
+    where [template1], [template2], ... is a regular expression
+    :return: list of found strings
+    """
     pars_list = []
     for temp in template:
         parsed_result = re.search(temp, string);
@@ -99,12 +109,12 @@ def parsing_string(string: str, template: list) -> list:
 
 
 def parsing_string_log(config: config, log_file_name: str) -> list:
-    '''
+    """
     Function-generator read log string from file with filename 'log_file_name'
     :param config: dictionary with structure containing the directory log file 'LOG_DIR'
     :param log_file_name: name processed log file
     :return: structure list [url:str, request_time:str]
-    '''
+    """
     log_file_path = config["LOG_DIR"] + '/' + log_file_name
     if log_file_path.endswith(".gz"):
         log_file = gzip.open(log_file_path, 'rb')
@@ -114,6 +124,39 @@ def parsing_string_log(config: config, log_file_name: str) -> list:
         parsed_list = parsing_string(log_string, [MASK_URL, MASK_REQUEST_TIME])
         yield parsed_list
     log_file.close()
+
+
+def count_list_item(list_item: list) -> int:
+    return len(list_item)
+
+
+def time_sum_url(list_item: list) -> float:
+    """
+    Amount calculation all item in list for this url, if not calculation gives 'None'
+    :param list_item: list of strings of numeric values
+    :return: Sum of all numerical values in list for this url
+    """
+    sum_item = 0
+    try:
+        for item in list_item:
+            sum_item += float(item)
+    except:
+        sum_item = None
+    return sum_item
+
+
+def time_average(list_item: list) -> float:
+    return time_sum_url(list_item)/len(list_item)
+
+
+def value_percent(value_item: float, value_all: float) -> float:
+    """
+    Calculates the percentages for a given URL relative to all queries
+    :param value_item: value for a given URL
+    :param value_all: value for to all URL
+    :return: value calculated as a percentage
+    """
+    return value_item/value_all*100
 
 
 def main():
@@ -143,10 +186,9 @@ def main():
                             config[key] = config_from_file[key]
         else:
             sys.exit(error_message_comnd_line % sys.argv[0])
-
     print('OK')
     print(search_last_log(config))
-    parsing_log(config, search_last_log(config))
+    parsing_string_log(config, search_last_log(config))
 
 
 if __name__ == "__main__":

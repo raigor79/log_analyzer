@@ -20,6 +20,10 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(log_analyzer.parsing_string(string3, [MASK_URL, MASK_REQUEST_TIME]), [
             None, "0.628"],
                          False)
+    def test_value_percent(self):
+        self.assertEqual(log_analyzer.value_percent(1,100), 1)
+        self.assertEqual(log_analyzer.value_percent(1100.10, 10000), 11.001)
+        self.assertEqual(log_analyzer.value_percent(10, 100), 10)
 
 if __name__ == '__main__':
     unittest.main()
