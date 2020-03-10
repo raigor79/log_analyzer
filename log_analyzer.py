@@ -405,7 +405,6 @@ def main():
                 logging.error(message_error)
             else:
                 logging.info(process_message(total,processed))
-
     else:
         logging.info('Last log has already been processed')
 
