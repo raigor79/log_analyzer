@@ -388,14 +388,24 @@ def main():
                             config[key] = config_from_file[key]
         else:
             sys.exit(error_message_comnd_line % sys.argv[0])
+    error_flag = False
     init_logging(config)
     log_name = search_last_log(config)
     if report_processing_check(config, log_name) == False:
-        logging.info('Last raw log found: %s', log_name)
-        mass_passed_data = parsing_log(config, log_name)
-        mass_passed_data_sort = sort_list_url(mass_passed_data)
-        create_report(config, log_name, create_result_mas(mass_passed_data_sort))
-        logging.info(process_message(total,processed))
+        try:
+            logging.info('Last raw log found: %s', log_name)
+            mass_passed_data = parsing_log(config, log_name)
+            mass_passed_data_sort = sort_list_url(mass_passed_data)
+            create_report(config, log_name, create_result_mas(mass_passed_data_sort))
+        except KeyboardInterrupt:
+            message_error  = 'Script the script was interrupted by clicking Ctrl+C'
+            error_flag = True
+        finally:
+            if error_flag:
+                logging.error(message_error)
+            else:
+                logging.info(process_message(total,processed))
+
     else:
         logging.info('Last log has already been processed')
 
