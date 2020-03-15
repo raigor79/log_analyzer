@@ -8,6 +8,9 @@ import collections
 import operator
 import string
 import logging
+import argparse
+import json
+import datetime
 
 # url regular expression pattern
 MASK_URL = r'(?<=GET\s)(/\S+)'
@@ -45,25 +48,25 @@ def search_last_log(config: dict) -> str:
     :return:  last_log  - filename last log file
     """
     res = []
-    mask_log = r'nginx-access-ui.log-\d+((\.gz\b)|(\.log\b))'
-    try:
-        files = os.listdir(config["LOG_DIR"])
-    except Exception as error_message:
-        logging.exception('Module "search_last_log": %s', error_message)
-    finally:
-        if files != []:
-            for index in range(0, len(files)):
-                if re.fullmatch(mask_log, files[index]):
-                    res.append(files[index])
-            last_log = res[0]
-            last = int(re.search(r'\d+', last_log).group(0))
-            for index in range(1, len(res)):
-                tres = int(re.search(r'\d+', res[index]).group(0))
-                if last < tres:
-                    last_log = res[index]
-                    last = tres
-        else:
-            last_log = None
+    mask_log = r'nginx-access-ui.log-(\d+)((\.gz\b)|(\.log\b))'
+
+    list_files = os.listdir(config["LOG_DIR"])
+    if list_files:
+        data_last_log = datetime.datetime.strptime('00010101','%Y%m%d').date()
+        for file in list_files:
+            group_str_namefile = re.match(mask_log, file)
+            if group_str_namefile:
+                try:
+                    data_log = datetime.datetime.strptime(group_str_namefile.group(1), '%Y%m%d').date()
+                except:
+                    continue
+                if data_last_log<data_log:
+                    data_last_log = data_log
+                    last_log = group_str_namefile.group(0)
+            else:
+                continue
+    else:
+        last_log = None
     return last_log
 
 
@@ -361,35 +364,40 @@ def process_message(total_str: int, proccesed_str: int) -> str:
         return 'Unable to parse most of the log Error >60% perhaps the logging format has changed'
 
 
+def parser_name_config() -> str:
+    """
+    Command line parsing procedure
+    :return: filename config
+    """
+    parser = argparse.ArgumentParser(description='Log analizer')
+    parser.add_argument('--config', type=str, help='Load config')
+    args = parser.parse_args()
+    return args.config
+
+
 def main():
-    if len(sys.argv) != 1:
-        if len(sys.argv) == 3 and sys.argv[1] == '--config':
-            config_from_file = {}
-            try:
-                id_file = open(sys.argv[2])
-                try:
-                    for string_read in id_file.readlines():
-                        if string_read != '\n':
-                            key, val = string_read.strip().split('=')
-                            key, val = key.strip(), val.strip()
-                            if val.isdigit():
-                                val = int(val)
-                        config_from_file[key] = val
-                except Exception as error_work_config:
-                    sys.exit(error_work_config)
-                finally:
-                    id_file.close()
-            except Exception as error_open_config:
-                sys.exit(error_open_config)
-            finally:
-                for key in config:
-                    if config_from_file.get(key) is not None:
-                        if type(config_from_file[key]) == type(config[key]):
-                            config[key] = config_from_file[key]
-        else:
-            sys.exit(error_message_comnd_line % sys.argv[0])
-    error_flag = False
     init_logging(config)
+    config_name = parser_name_config()
+    if config_name:
+        try:
+            id_file_config = open(config_name)
+            config_from_file = json.load(id_file_config, encoding="utf8")
+        except Exception as error_work_config:
+            sys.exit(error_work_config)
+        finally:
+            id_file_config.close()
+        for key in config:
+            if config_from_file.get(key) is not None:
+                if type(config_from_file[key]) != type(config[key]):
+                    pass
+                else:
+                    config[key] = config_from_file[key]
+    if not os.path.isdir(config["LOG_DIR"]):
+        logging.error("Scripts aborted - The directory 'LOG_DIR' is incorrect")
+        sys.exit()
+    print(config)
+    error_flag = False
+    # init_logging(config)
     log_name = search_last_log(config)
     if report_processing_check(config, log_name) == False:
         try:
@@ -398,13 +406,13 @@ def main():
             mass_passed_data_sort = sort_list_url(mass_passed_data)
             create_report(config, log_name, create_result_mas(mass_passed_data_sort))
         except KeyboardInterrupt:
-            message_error  = 'Script the script was interrupted by clicking Ctrl+C'
+            message_error = 'Script the script was interrupted by clicking Ctrl+C'
             error_flag = True
         finally:
             if error_flag:
                 logging.error(message_error)
             else:
-                logging.info(process_message(total,processed))
+                logging.info(process_message(total, processed))
     else:
         logging.info('Last log has already been processed')
 
