@@ -17,6 +17,8 @@ MASK_URL = r'(?<=GET\s)(/\S+)'
 # request time regular expression pattern
 MASK_REQUEST_TIME = r'(?<=\ )\d+\.\d+?$'
 
+MASK_LOG = r'nginx-access-ui.log-(\d+)((\.gz\b)|(\.log\b))'
+
 error_message_comnd_line = '''Unknown option.
 Usage: python %s [--config] [file]
 '''
@@ -48,19 +50,17 @@ def search_last_log(config: dict) -> str:
     :return:  last_log  - filename last log file
     """
     res = []
-    mask_log = r'nginx-access-ui.log-(\d+)((\.gz\b)|(\.log\b))'
-
     list_files = os.listdir(config["LOG_DIR"])
     if list_files:
-        data_last_log = datetime.datetime.strptime('00010101','%Y%m%d').date()
+        data_last_log = datetime.datetime.strptime('00010101', '%Y%m%d').date()
         for file in list_files:
-            group_str_namefile = re.match(mask_log, file)
+            group_str_namefile = re.match(MASK_LOG, file)
             if group_str_namefile:
                 try:
                     data_log = datetime.datetime.strptime(group_str_namefile.group(1), '%Y%m%d').date()
                 except:
                     continue
-                if data_last_log<data_log:
+                if data_last_log < data_log:
                     data_last_log = data_log
                     last_log = group_str_namefile.group(0)
             else:
@@ -78,24 +78,24 @@ def report_processing_check(config: dict, last_log: str) -> bool:
     :return: True if the file exists in the directory or
     False if the file is not in the directory
     """
-    mask_rep = r'report-\d\d\d\d\.\d\d\.\d\d((\.html\b))'
-    try:
-        files = os.listdir(config["REPORT_DIR"])
-    except Exception as error_message:
-        logging.exception('Module "report_processing_check": %s', error_message)
-    res = []
-    mask_date = re.findall(r'\d+', last_log)
-    mask_rep_last = r'' + mask_date[0][:4] + '.' + mask_date[0][4:6] + '.' + mask_date[0][6:]
-    for index in range(0, len(files)):
-        if re.fullmatch(mask_rep, files[index]):
-            res.append(files[index])
-    flag_processing_check = False
-    for index in res:
-        if re.search(mask_rep_last, index):
-            flag_processing_check += True
+    group_str_namefile = re.match(MASK_LOG, last_log)
+    date_string = group_str_namefile.group(1)
+    date_typedate = datetime.datetime.strptime(date_string, "%Y%m%d").date()
+    report_name = 'report-{0}.html'.format(datetime.datetime.strftime(date_typedate, "%Y.%m.%d"))
+    if os.path.isdir(config["REPORT_DIR"]):
+        files_list = os.listdir(config["REPORT_DIR"])
+        if report_name in files_list:
+            return True
         else:
-            flag_processing_check += False
-    return bool(flag_processing_check)
+            return False
+    else:
+        try:
+            os.mkdir(config["REPORT_DIR"])
+        except OSError:
+            logging.exception("Create directory% s failed" % config["REPORT_DIR"])
+        else:
+            logging.info("Successfully created directory %s " % config["REPORT_DIR"])
+        return False
 
 
 def parsing_string(string_pars: str, template: list) -> list:
@@ -116,6 +116,23 @@ def parsing_string(string_pars: str, template: list) -> list:
     return pars_list
 
 
+def process_message(total_str: int, proccesed_str: int, permissible_error: int) -> str:
+    """
+
+    :param total_str:
+    :param proccesed_str:
+    :param permissible_error:
+    :return:
+    """
+    err = 100 - 100 * proccesed_str / total_str
+    if err < permissible_error:
+        msg = 'Process complete'
+    else:
+        msg = 'Unable to parse most of the log Error > %d \% ' \
+              'perhaps the logging format has changed' % permissible_error
+    logging.info(msg)
+
+
 def parsing_string_log(config: dict, log_file_name: str) -> list:
     """
     Function-generator read log string from file with filename 'log_file_name'
@@ -123,9 +140,7 @@ def parsing_string_log(config: dict, log_file_name: str) -> list:
     :param log_file_name: name processed log file
     :return: structure list [url:str, request_time:str]
     """
-    log_file_path = config["LOG_DIR"] + '/' + log_file_name
-    global total
-    global processed
+    log_file_path = os.path.join(config["LOG_DIR"], log_file_name)
     try:
         if log_file_path.endswith(".gz"):
             log_file = gzip.open(log_file_path, 'rt')
@@ -142,8 +157,7 @@ def parsing_string_log(config: dict, log_file_name: str) -> list:
             processed_str += 1
         yield parsed_list
     log_file.close()
-    processed = processed_str
-    total = total_str
+    logging.info(process_message(total_str, processed_str), 60)
 
 
 def parsing_log(config: dict, log_file_name: str) -> list:
@@ -354,14 +368,6 @@ def init_logging(conf: dict):
         format=format_log,
         datefmt='%Y.%m.%d %H:%M:%S',
         level=logging.INFO)
-
-
-def process_message(total_str: int, proccesed_str: int) -> str:
-    err = 100 - 100 * proccesed_str / total_str
-    if err < 60:
-        return 'Process complete'
-    else:
-        return 'Unable to parse most of the log Error >60% perhaps the logging format has changed'
 
 
 def parser_name_config() -> str:
