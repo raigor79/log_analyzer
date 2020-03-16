@@ -37,7 +37,7 @@ To run the script on your computer, install Python 3.
  
 ### Installing
 
-Download files: log_analyzer.py, report.html, report/jquery.tablesorter.min.js
+Download files: log_analyzer.py, report.html, reports/jquery.tablesorter.min.js
 
 ### Running
 
@@ -50,12 +50,14 @@ python3 log_analyzer.py
 python3 log_analyzer.py --config filename
 ```
 
-example file config
+example file config in format json
 ```
-REPORT_SIZE = 8000
-REPORT_DIR1 = ./reports1
-LOG_DIR = ./log
-LOG_ANALYZER_PATH = ./loganalyzer.log
+{
+ REPORT_SIZE : 8000
+ REPORT_DIR : "./reports"
+ LOG_DIR : "./log"
+ LOG_ANALYZER_PATH : "./loganalyzer.log"
+}
 ```
 LOG_ANALYZER_PATH - the variable defines the script log file, the variable defines the file for saving the script operation logsб
 by default, the log is written to stdout
