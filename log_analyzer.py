@@ -153,6 +153,8 @@ def parsing_string_log(config: dict, log_file_name: str) -> list:
             log_file = open(log_file_path, 'r')
     except Exception as er:
         logging.exception('Error %s', er)
+    finally:
+        log_file.close()
     total_str = 0
     processed_str = 0
     for log_string in log_file:
