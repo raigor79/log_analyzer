@@ -11,6 +11,7 @@ import logging
 import argparse
 import json
 import datetime
+import pathlib
 
 # url regular expression pattern
 MASK_URL = r'(?<=GET\s)(/\S+)'
@@ -112,7 +113,10 @@ def parsing_string(string_pars: str, template: list) -> list:
         if parsed_result is not None:
             pars_list.append(parsed_result.group())
         else:
-            pars_list.append('')
+            if temp != MASK_REQUEST_TIME:
+                pars_list.append('')
+            else:
+                pars_list.append('0')
     return pars_list
 
 
@@ -130,7 +134,7 @@ def process_message(total_str: int, proccesed_str: int, permissible_error: int) 
     else:
         msg = 'Unable to parse most of the log Error > %d \% ' \
               'perhaps the logging format has changed' % permissible_error
-    logging.info(msg)
+    return msg
 
 
 def parsing_string_log(config: dict, log_file_name: str) -> list:
@@ -143,9 +147,9 @@ def parsing_string_log(config: dict, log_file_name: str) -> list:
     log_file_path = os.path.join(config["LOG_DIR"], log_file_name)
     try:
         if log_file_path.endswith(".gz"):
-            log_file = gzip.open(log_file_path, 'rt')
+            log_file = gzip.open(log_file_path, 'rt', encoding='utf8')
         else:
-            log_file = open(log_file_path, 'rt', encoding='utf-8')
+            log_file = open(log_file_path, 'r')
     except Exception as er:
         logging.exception('Error %s', er)
     total_str = 0
@@ -157,7 +161,7 @@ def parsing_string_log(config: dict, log_file_name: str) -> list:
             processed_str += 1
         yield parsed_list
     log_file.close()
-    logging.info(process_message(total_str, processed_str), 60)
+    logging.info(process_message(total_str, processed_str, 60))
 
 
 def parsing_log(config: dict, log_file_name: str) -> list:
@@ -264,7 +268,8 @@ def time_total_request(data_mas: dict) -> float:
     count_request_time = 0
     for index in data_mas.keys():
         for time_str in data_mas[index]:
-            count_request_time += float(time_str)
+            if time_str != "":
+                count_request_time += float(time_str)
     return count_request_time
 
 
@@ -312,6 +317,7 @@ def create_result_mas(data_mas: dict) -> list:
     total_count = count_total_request(data_mas)
     total_time = time_total_request(data_mas)
     result_mas = []
+
     for item_mas in data_mas.keys():
         result_mas.append(write_url_dict(item_mas, data_mas[item_mas], total_count, total_time))
     result_mas_sort = sorted(result_mas, key=operator.itemgetter("time_sum"), reverse=True)
@@ -342,17 +348,27 @@ def create_report(conf: dict, log_file_name: str, result_mas_sort: list):
         size_rep = len(result_mas_sort)
     report_text = string.Template(template_text)
     report_text_file = report_text.safe_substitute(table_json=result_mas_sort[0:size_rep])
-    mask_date = re.findall(r'\d+', log_file_name)
-    name_rep_file = conf['REPORT_DIR'] + '/report-' + mask_date[0][:4] + '.' \
-                    + mask_date[0][4:6] + '.' + mask_date[0][6:] + '.html'
+
+    group_str_namefile = re.match(MASK_LOG, log_file_name)
+    date_string = group_str_namefile.group(1)
+    date_typedate = datetime.datetime.strptime(date_string, "%Y%m%d").date()
+    report_name_tmp = 'report-{0}.tmp'.format(datetime.datetime.strftime(date_typedate, "%Y.%m.%d"))
+    path_rep_file_tmp = os.path.join(conf['REPORT_DIR'], report_name_tmp)
     try:
-        file_report = open(name_rep_file, 'w', encoding='utf-8')
+        file_report = open(path_rep_file_tmp, 'w', encoding='utf-8')
         file_report.write(report_text_file)
     except Exception as er:
-        logging.exception('Error create report %s: %s', name_rep_file, er)
+        logging.exception('Error create report %s: %s', path_rep_file_tmp, er)
     finally:
         file_report.close()
-
+    file_report.close()
+    report_name = pathlib.Path(path_rep_file_tmp).stem + ".html"
+    new_name_rep_file = os.path.join(config["REPORT_DIR"],report_name)
+    try:
+        os.rename(path_rep_file_tmp,new_name_rep_file)
+    except:
+        logging.exception("Report %s - failed to create", report_name)
+    logging.info("Create report file - %s ", report_name)
 
 def init_logging(conf: dict):
     """
@@ -401,9 +417,8 @@ def main():
     if not os.path.isdir(config["LOG_DIR"]):
         logging.error("Scripts aborted - The directory 'LOG_DIR' is incorrect")
         sys.exit()
-    print(config)
+    logging.info("Start. Load config %s", config)
     error_flag = False
-    # init_logging(config)
     log_name = search_last_log(config)
     if report_processing_check(config, log_name) == False:
         try:
@@ -413,12 +428,6 @@ def main():
             create_report(config, log_name, create_result_mas(mass_passed_data_sort))
         except KeyboardInterrupt:
             message_error = 'Script the script was interrupted by clicking Ctrl+C'
-            error_flag = True
-        finally:
-            if error_flag:
-                logging.error(message_error)
-            else:
-                logging.info(process_message(total, processed))
     else:
         logging.info('Last log has already been processed')
 
