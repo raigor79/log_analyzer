@@ -12,6 +12,7 @@ import argparse
 import json
 import datetime
 import pathlib
+import shutil
 
 # url regular expression pattern
 MASK_URL = r'(?<=GET\s)(/\S+)'
@@ -122,15 +123,15 @@ def parsing_string(string_pars: str, template: list) -> list:
 
 def process_message(total_str: int, proccesed_str: int, permissible_error: int) -> str:
     """
-
-    :param total_str:
-    :param proccesed_str:
-    :param permissible_error:
-    :return:
+    The function calculates the parsing error and, on the threshold, issues a message to the log
+    :param total_str: total number of parsing operations
+    :param proccesed_str: number of defined values
+    :param permissible_error: threshold error
+    :return: message string
     """
     err = 100 - 100 * proccesed_str / total_str
     if err < permissible_error:
-        msg = 'Process complete'
+        msg = 'Process to parse log complete'
     else:
         msg = 'Unable to parse most of the log Error > %d \% ' \
               'perhaps the logging format has changed' % permissible_error
@@ -211,7 +212,7 @@ def time_sum_url(list_item: list) -> float:
             sum_item += float(item)
     except:
         logging.exception('Error conversions in type "float" modul time_sum_url')
-        sum_item = 0  # none
+        sum_item = 0
     return sum_item
 
 
@@ -363,12 +364,16 @@ def create_report(conf: dict, log_file_name: str, result_mas_sort: list):
         file_report.close()
     file_report.close()
     report_name = pathlib.Path(path_rep_file_tmp).stem + ".html"
-    new_name_rep_file = os.path.join(config["REPORT_DIR"],report_name)
+    new_name_rep_file = os.path.join(conf["REPORT_DIR"],report_name)
     try:
         os.rename(path_rep_file_tmp,new_name_rep_file)
     except:
         logging.exception("Report %s - failed to create", report_name)
     logging.info("Create report file - %s ", report_name)
+    if  "jquery.tablesorter.min.js" not in os.listdir(conf["REPORT_DIR"]):
+        if "jquery.tablesorter.min.js" in os.listdir("./"):
+            shutil.copy(r"jquery.tablesorter.min.js", os.path.join(conf["REPORT_DIR"],"jquery.tablesorter.min.js"))
+
 
 def init_logging(conf: dict):
     """
