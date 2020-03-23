@@ -1,0 +1,9 @@
+{
+    "REPORT_SIZE" : 10000,
+    "REPORT_DIR" : "./reports",
+    "LOG_DIR" : "./log",
+    "STATUS_LOGGING" : "INFO",
+    "LOG_ANALYZER_PATH": "./log",
+    "THRESHOLD_ERROR_PARS_PERCENT": 50
+
+}
