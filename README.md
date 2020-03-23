@@ -30,6 +30,18 @@ default:
 ```
 1000
 ```
+* status logging
+```
+INFO
+```
+* threshold error parsing percent
+```
+60
+```
+* LOG_ANALYZER path logging
+```
+None
+```
 ## Getting Started
 
 To run the script on your computer, install Python 3.
@@ -53,10 +65,12 @@ python3 log_analyzer.py --config filename
 example file config in format json
 ```
 {
- REPORT_SIZE : 8000
- REPORT_DIR : "./reports"
- LOG_DIR : "./log"
- LOG_ANALYZER_PATH : "./loganalyzer.log"
+    "REPORT_SIZE" : 10000,
+    "REPORT_DIR" : "./reports",
+    "LOG_DIR" : "./log",
+    "STATUS_LOGGING" : "INFO",
+    "LOG_ANALYZER_PATH": "./log",
+    "THRESHOLD_ERROR_PARS_PERCENT": 50
 }
 ```
 LOG_ANALYZER_PATH - the variable defines the script log file, the variable defines the file for saving the script operation logsб
