@@ -21,6 +21,10 @@ MASK_REQUEST_TIME = r'(?<=\ )\d+\.\d+?$'
 
 MASK_LOG = r'nginx-access-ui.log-(\d+)((\.gz\b)|(\.log\b))'
 
+DEFAULT_CONFIG_PATH = os.path.dirname(__file__)
+
+DEFAULT_CONFIG_FILE_NAME = "default.cfg"
+
 error_message_comnd_line = '''Unknown option.
 Usage: python %s [--config] [file]
 '''
@@ -35,11 +39,12 @@ Usage: python %s [--config] [file]
    REPORT_DIR - report save directory
    LOG_DIR - directory storing logfiles 
 '''
-config = {
+default_config = {
     "REPORT_SIZE": 1000,
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log",
-    "LOG_ANALYZER_PATH": None
+    "LOG_ANALYZER_PATH": None,
+    "STATUS_LOGGING" : "INFO"
 }
 
 template_report = "./report.html"
@@ -52,7 +57,7 @@ def search_last_log(config: dict) -> str:
     :return:  last_log  - filename last log file
     """
     res = []
-    list_files = os.listdir(config["LOG_DIR"])
+    list_files = os.listdir(os.path.join(config["LOG_DIR"]))
     if list_files:
         data_last_log = datetime.datetime.strptime('00010101', '%Y%m%d').date()
         for file in list_files:
@@ -146,24 +151,16 @@ def parsing_string_log(config: dict, log_file_name: str) -> list:
     :return: structure list [url:str, request_time:str]
     """
     log_file_path = os.path.join(config["LOG_DIR"], log_file_name)
-    try:
-        if log_file_path.endswith(".gz"):
-            log_file = gzip.open(log_file_path, 'rt', encoding='utf8')
-        else:
-            log_file = open(log_file_path, 'r')
-    except Exception as er:
-        logging.exception('Error %s', er)
-    finally:
-        log_file.close()
-    total_str = 0
-    processed_str = 0
-    for log_string in log_file:
-        total_str += 1
-        parsed_list = parsing_string(log_string, [MASK_URL, MASK_REQUEST_TIME])
-        if parsed_list[0] != '':
-            processed_str += 1
-        yield parsed_list
-    log_file.close()
+    open_log = gzip.open if log_file_name.endswith(".gz") else open
+    with open_log(log_file_path, 'rt', encoding='utf-8') as log_file:
+        total_str = 0
+        processed_str = 0
+        for log_string in log_file:
+            total_str += 1
+            parsed_list = parsing_string(log_string, [MASK_URL, MASK_REQUEST_TIME])
+            if parsed_list[0] != '':
+                processed_str += 1
+            yield parsed_list
     logging.info(process_message(total_str, processed_str, 60))
 
 
@@ -174,10 +171,7 @@ def parsing_log(config: dict, log_file_name: str) -> list:
     :param log_file_name: name processed log file
     :return: structure list [[url:str, request_time:str],[url:str, request_time:str],...]
     """
-    lines_log = parsing_string_log(config, log_file_name)
-    parced_lines = []
-    for line in lines_log:
-        parced_lines.append(line)
+    parced_lines = parsing_string_log(config, log_file_name)
     return parced_lines
 
 
@@ -338,33 +332,27 @@ def create_report(conf: dict, log_file_name: str, result_mas_sort: list):
     :param result_mas_sort: sorted list of statistics [{},{},..]
     :return: 
     """
-    try:
-        file_template_report = open(template_report, 'r')
-        template_text = file_template_report.read()
-    except Exception as er:
-        logging.exception('Error load template report: %s', er)
-    finally:
-        file_template_report.close()
+    with open(template_report, 'r', encoding='utf-8') as file_template_report:
+        try:
+            template_text = file_template_report.read()
+        except Exception as er:
+            logging.exception('Error load template report: %s', er)
     if conf["REPORT_SIZE"] < len(result_mas_sort):
         size_rep = conf["REPORT_SIZE"]
     else:
         size_rep = len(result_mas_sort)
     report_text = string.Template(template_text)
     report_text_file = report_text.safe_substitute(table_json=result_mas_sort[0:size_rep])
-
     group_str_namefile = re.match(MASK_LOG, log_file_name)
     date_string = group_str_namefile.group(1)
     date_typedate = datetime.datetime.strptime(date_string, "%Y%m%d").date()
     report_name_tmp = 'report-{0}.tmp'.format(datetime.datetime.strftime(date_typedate, "%Y.%m.%d"))
     path_rep_file_tmp = os.path.join(conf['REPORT_DIR'], report_name_tmp)
-    try:
-        file_report = open(path_rep_file_tmp, 'w', encoding='utf-8')
-        file_report.write(report_text_file)
-    except Exception as er:
-        logging.exception('Error create report %s: %s', path_rep_file_tmp, er)
-    finally:
-        file_report.close()
-    file_report.close()
+    with open(path_rep_file_tmp, 'w', encoding='utf-8') as file_report:
+        try:
+            file_report.write(report_text_file)
+        except Exception as er:
+            logging.exception('Error create report %s: %s', path_rep_file_tmp, er)
     report_name = pathlib.Path(path_rep_file_tmp).stem + ".html"
     new_name_rep_file = os.path.join(conf["REPORT_DIR"],report_name)
     try:
@@ -374,7 +362,8 @@ def create_report(conf: dict, log_file_name: str, result_mas_sort: list):
     logging.info("Create report file - %s ", report_name)
     if  "jquery.tablesorter.min.js" not in os.listdir(conf["REPORT_DIR"]):
         if "jquery.tablesorter.min.js" in os.listdir("./"):
-            shutil.copy(r"jquery.tablesorter.min.js", os.path.join(conf["REPORT_DIR"],"jquery.tablesorter.min.js"))
+            shutil.copy(r"jquery.tablesorter.min.js",
+                        os.path.join(conf["REPORT_DIR"],"jquery.tablesorter.min.js"))
 
 
 def init_logging(conf: dict):
@@ -390,7 +379,7 @@ def init_logging(conf: dict):
         filename=conf["LOG_ANALYZER_PATH"],
         format=format_log,
         datefmt='%Y.%m.%d %H:%M:%S',
-        level=logging.INFO)
+        level=conf["STATUS_LOGGING"])
 
 
 def parser_name_config() -> str:
@@ -404,40 +393,47 @@ def parser_name_config() -> str:
     return args.config
 
 
-def main():
+def configs_merger(conf: dict, default_conf_path=DEFAULT_CONFIG_PATH,
+                   default_conf_f_name=DEFAULT_CONFIG_FILE_NAME) -> dict:
+    """
+    Config file upload function and merge with default config
+    :param conf:
+    :param default_conf_path: default config path
+    :param default_conf_f_name: namefile default config
+    :return: dict config
+    """
+    config_name = parser_name_config() if parser_name_config() else default_conf_f_name
+    try:
+        with open(os.path.join(default_conf_path, config_name)) as id_file_config:
+            config_from_file = json.load(id_file_config, encoding="utf-8")
+    except Exception as error_work_config:
+        sys.exit(error_work_config)
+    conf.update(config_from_file)
+    return conf
+
+
+def main(config):
+    config.update(configs_merger(config))
     init_logging(config)
-    config_name = parser_name_config()
-    if config_name:
-        try:
-            id_file_config = open(config_name)
-            config_from_file = json.load(id_file_config, encoding="utf8")
-        except Exception as error_work_config:
-            sys.exit(error_work_config)
-        finally:
-            id_file_config.close()
-        for key in config:
-            if config_from_file.get(key) is not None:
-                if type(config_from_file[key]) != type(config[key]):
-                    pass
-                else:
-                    config[key] = config_from_file[key]
     if not os.path.isdir(config["LOG_DIR"]):
         logging.error("Scripts aborted - The directory 'LOG_DIR' is incorrect")
         sys.exit()
     logging.info("Start. Load config %s", config)
-    error_flag = False
     log_name = search_last_log(config)
-    if report_processing_check(config, log_name) == False:
-        try:
+    if not report_processing_check(config, log_name):
             logging.info('Last raw log found: %s', log_name)
             mass_passed_data = parsing_log(config, log_name)
             mass_passed_data_sort = sort_list_url(mass_passed_data)
             create_report(config, log_name, create_result_mas(mass_passed_data_sort))
-        except KeyboardInterrupt:
-            message_error = 'Script the script was interrupted by clicking Ctrl+C'
     else:
         logging.info('Last log has already been processed')
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main(default_config)
+    except KeyboardInterrupt:
+        logging.info('Script the script was interrupted by clicking Ctrl+C')
+    except Exception as err:
+        logging.exception(err)
+
