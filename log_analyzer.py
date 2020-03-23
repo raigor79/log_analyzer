@@ -38,13 +38,16 @@ Usage: python %s [--config] [file]
 '''REPORT_SIZE - the number of parsing url in the report table
    REPORT_DIR - report save directory
    LOG_DIR - directory storing logfiles 
+   STATUS_LOGGING - status logging (ERROR, INFO, DEBUG)
+   THRESHOLD_ERROR_PARS_PERCENT - error parsing in %
 '''
 default_config = {
     "REPORT_SIZE": 1000,
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log",
     "LOG_ANALYZER_PATH": None,
-    "STATUS_LOGGING" : "INFO"
+    "STATUS_LOGGING": "INFO",
+    "THRESHOLD_ERROR_PARS_PERCENT": 60
 }
 
 template_report = "./report.html"
@@ -161,7 +164,7 @@ def parsing_string_log(config: dict, log_file_name: str) -> list:
             if parsed_list[0] != '':
                 processed_str += 1
             yield parsed_list
-    logging.info(process_message(total_str, processed_str, 60))
+    logging.info(process_message(total_str, processed_str, config["THRESHOLD_ERROR_PARS_PERCENT"]))
 
 
 def parsing_log(config: dict, log_file_name: str) -> list:
@@ -354,16 +357,16 @@ def create_report(conf: dict, log_file_name: str, result_mas_sort: list):
         except Exception as er:
             logging.exception('Error create report %s: %s', path_rep_file_tmp, er)
     report_name = pathlib.Path(path_rep_file_tmp).stem + ".html"
-    new_name_rep_file = os.path.join(conf["REPORT_DIR"],report_name)
+    new_name_rep_file = os.path.join(conf["REPORT_DIR"], report_name)
     try:
-        os.rename(path_rep_file_tmp,new_name_rep_file)
+        os.rename(path_rep_file_tmp, new_name_rep_file)
     except:
         logging.exception("Report %s - failed to create", report_name)
     logging.info("Create report file - %s ", report_name)
-    if  "jquery.tablesorter.min.js" not in os.listdir(conf["REPORT_DIR"]):
+    if "jquery.tablesorter.min.js" not in os.listdir(conf["REPORT_DIR"]):
         if "jquery.tablesorter.min.js" in os.listdir("./"):
             shutil.copy(r"jquery.tablesorter.min.js",
-                        os.path.join(conf["REPORT_DIR"],"jquery.tablesorter.min.js"))
+                        os.path.join(conf["REPORT_DIR"], "jquery.tablesorter.min.js"))
 
 
 def init_logging(conf: dict):
@@ -421,10 +424,10 @@ def main(config):
     logging.info("Start. Load config %s", config)
     log_name = search_last_log(config)
     if not report_processing_check(config, log_name):
-            logging.info('Last raw log found: %s', log_name)
-            mass_passed_data = parsing_log(config, log_name)
-            mass_passed_data_sort = sort_list_url(mass_passed_data)
-            create_report(config, log_name, create_result_mas(mass_passed_data_sort))
+        logging.info('Last raw log found: %s', log_name)
+        mass_passed_data = parsing_log(config, log_name)
+        mass_passed_data_sort = sort_list_url(mass_passed_data)
+        create_report(config, log_name, create_result_mas(mass_passed_data_sort))
     else:
         logging.info('Last log has already been processed')
 
@@ -436,4 +439,3 @@ if __name__ == "__main__":
         logging.info('Script the script was interrupted by clicking Ctrl+C')
     except Exception as err:
         logging.exception(err)
-
