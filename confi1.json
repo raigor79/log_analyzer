@@ -3,6 +3,6 @@
     "REPORT_DIR" : "./reports",
     "LOG_DIR" : "./log",
     "STATUS_LOGGING" : "INFO",
-    "LOG_ANALYZER_PATH": "./log",
+    "LOG_ANALYZER_PATH": "./log/log_analyzer.log",
     "THRESHOLD_ERROR_PARS_PERCENT": 50
 }
