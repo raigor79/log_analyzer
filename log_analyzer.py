@@ -12,12 +12,16 @@ import argparse
 import json
 import datetime
 import pathlib
-import shutil
+from typing import Union
+from typing import List
+from typing import NamedTuple
+from typing import Dict
 
-# url regular expression pattern
-MASK_URL = r'(?<=GET\s)(/\S+)'
-# request time regular expression pattern
-MASK_REQUEST_TIME = r'(?<=\ )\d+\.\d+?$'
+# MASK_REQUEST
+# url regular expression pattern MASK_URL = (?<=GET\s)(/\S+)
+# request time regular expression pattern MASK_REQUEST_TIME = ((?<=\ )\d+\.\d+?$)
+
+MASK_REQUEST = r'(?<=GET\s)(/\S+).+((?<=\ )\d+\.\d+?$)'
 
 MASK_LOG = r'nginx-access-ui.log-(\d+)((\.gz\b)|(\.log\b))'
 
@@ -25,15 +29,8 @@ DEFAULT_CONFIG_PATH = os.path.dirname(__file__)
 
 DEFAULT_CONFIG_FILE_NAME = "default.cfg"
 
-error_message_comnd_line = '''Unknown option.
-Usage: python %s [--config] [file]
-'''
+PATH_TEMPLATE_REPORT = "./report.html"
 
-'''log_format ui_short '$remote_addr  $remote_user $http_x_real_ip [$time_local] "$request" '
-                       '$status $body_bytes_sent "$http_referer" '
-                       '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
-                       '$request_time';
-'''
 
 '''REPORT_SIZE - the number of parsing url in the report table
    REPORT_DIR - report save directory
@@ -50,37 +47,33 @@ default_config = {
     "THRESHOLD_ERROR_PARS_PERCENT": 60
 }
 
-template_report = "./report.html"
+
+LastLog = collections.namedtuple("LastLog", ['path', 'date'])
 
 
-def search_last_log(config: dict) -> str:
+def search_last_log(config: dict) -> NamedTuple:
     """
     search function for the last log file in the directory 'LOG_DIR'
     :param config -  dictionary  with the directory log file:
     :return:  last_log  - filename last log file
     """
-    res = []
-    list_files = os.listdir(os.path.join(config["LOG_DIR"]))
-    if list_files:
-        data_last_log = datetime.datetime.strptime('00010101', '%Y%m%d').date()
-        for file in list_files:
-            group_str_namefile = re.match(MASK_LOG, file)
-            if group_str_namefile:
-                try:
-                    data_log = datetime.datetime.strptime(group_str_namefile.group(1), '%Y%m%d').date()
-                except:
-                    continue
-                if data_last_log < data_log:
-                    data_last_log = data_log
-                    last_log = group_str_namefile.group(0)
-            else:
+    date_last_log = None
+    for file_name in os.listdir(os.path.join(config["LOG_DIR"])):
+        if re.match(MASK_LOG, file_name):
+            try:
+                date_log = datetime.datetime.strptime(re.match(MASK_LOG,
+                                                               file_name).group(1),
+                                                      '%Y%m%d').date()
+            except:
                 continue
-    else:
-        last_log = None
-    return last_log
+            if date_last_log is None or date_log > date_last_log:
+                date_last_log = date_log
+                last_log = file_name
+    if date_last_log:
+        return LastLog(path=last_log, date=date_last_log)
 
 
-def report_processing_check(config: dict, last_log: str) -> bool:
+def report_processing_check(config: dict, last_log: NamedTuple) -> bool:
     """
     Function processing check reporting the latest log
     :param config: dictionary  with the directory report file 'REPORT_DIR'
@@ -88,27 +81,22 @@ def report_processing_check(config: dict, last_log: str) -> bool:
     :return: True if the file exists in the directory or
     False if the file is not in the directory
     """
-    group_str_namefile = re.match(MASK_LOG, last_log)
-    date_string = group_str_namefile.group(1)
-    date_typedate = datetime.datetime.strptime(date_string, "%Y%m%d").date()
-    report_name = 'report-{0}.html'.format(datetime.datetime.strftime(date_typedate, "%Y.%m.%d"))
+    report_name = 'report-{0}.html'.format(datetime.datetime.strftime(last_log.date,
+                                                                      "%Y.%m.%d"))
     if os.path.isdir(config["REPORT_DIR"]):
         files_list = os.listdir(config["REPORT_DIR"])
-        if report_name in files_list:
-            return True
-        else:
-            return False
+        return True if report_name in files_list else False
     else:
         try:
             os.mkdir(config["REPORT_DIR"])
-        except OSError:
+        except:
             logging.exception("Create directory% s failed" % config["REPORT_DIR"])
         else:
             logging.info("Successfully created directory %s " % config["REPORT_DIR"])
         return False
 
 
-def parsing_string(string_pars: str, template: list) -> list:
+def parsed_string(string_pars: str, template: str) -> List[List[str]]:
     """
     Function parsing string 'string' pattern list template
     :param string: any string
@@ -116,29 +104,23 @@ def parsing_string(string_pars: str, template: list) -> list:
     where [template1], [template2], ... is a regular expression
     :return: list of found strings
     """
-    pars_list = []
-    for temp in template:
-        parsed_result = re.search(temp, string_pars)
-        if parsed_result is not None:
-            pars_list.append(parsed_result.group())
-        else:
-            if temp != MASK_REQUEST_TIME:
-                pars_list.append('')
-            else:
-                pars_list.append('0')
-    return pars_list
+    parsed_result = re.search(template, string_pars)
+    if parsed_result is not None:
+        pars_list = [parsed_result.group(1),
+                     parsed_result.group(2)]
+        return pars_list
 
 
-def process_message(total_str: int, proccesed_str: int, permissible_error: int) -> str:
+def process_message(total_str: int, processed_str: int, permissible_error: int) -> str:
     """
     The function calculates the parsing error and, on the threshold, issues a message to the log
     :param total_str: total number of parsing operations
-    :param proccesed_str: number of defined values
+    :param processed_str: number of defined values
     :param permissible_error: threshold error
     :return: message string
     """
-    err = 100 - 100 * proccesed_str / total_str
-    if err < permissible_error:
+    error_pars = 100 - 100 * processed_str / total_str
+    if error_pars < permissible_error:
         msg = 'Process to parse log complete'
     else:
         msg = 'Unable to parse most of the log Error > %d \% ' \
@@ -146,39 +128,31 @@ def process_message(total_str: int, proccesed_str: int, permissible_error: int) 
     return msg
 
 
-def parsing_string_log(config: dict, log_file_name: str) -> list:
+def parsed_string_log(config: dict, log_file_name: NamedTuple) -> List[List[str]]:
     """
     Function-generator read log string from file with filename 'log_file_name'
     :param config: dictionary with structure containing the directory log file 'LOG_DIR'
     :param log_file_name: name processed log file
     :return: structure list [url:str, request_time:str]
     """
-    log_file_path = os.path.join(config["LOG_DIR"], log_file_name)
-    open_log = gzip.open if log_file_name.endswith(".gz") else open
+    log_file_path = os.path.join(config["LOG_DIR"], log_file_name.path)
+    open_log = gzip.open if log_file_path.endswith(".gz") else open
     with open_log(log_file_path, 'rt', encoding='utf-8') as log_file:
         total_str = 0
         processed_str = 0
         for log_string in log_file:
             total_str += 1
-            parsed_list = parsing_string(log_string, [MASK_URL, MASK_REQUEST_TIME])
-            if parsed_list[0] != '':
-                processed_str += 1
+            parsed_list = parsed_string(log_string, MASK_REQUEST)
+            if parsed_list is None:
+                continue
+            processed_str += 1
             yield parsed_list
-    logging.info(process_message(total_str, processed_str, config["THRESHOLD_ERROR_PARS_PERCENT"]))
+    logging.info(process_message(total_str,
+                                 processed_str,
+                                 config["THRESHOLD_ERROR_PARS_PERCENT"]))
 
 
-def parsing_log(config: dict, log_file_name: str) -> list:
-    """
-    The function collects all parsed URLs into a list
-    :param config: dictionary with structure containing the directory log file 'LOG_DIR'
-    :param log_file_name: name processed log file
-    :return: structure list [[url:str, request_time:str],[url:str, request_time:str],...]
-    """
-    parced_lines = parsing_string_log(config, log_file_name)
-    return parced_lines
-
-
-def sort_list_url(mass_url: list) -> dict:
+def sort_list_url(mass_url: List[List[str]]) -> Dict:
     """
     Function of sorting the request time by the same URL
     :param mass_url: list [ "url","time_request"]
@@ -190,16 +164,7 @@ def sort_list_url(mass_url: list) -> dict:
     return mas_sort_url
 
 
-def count_list_item(list_item: list) -> int:
-    """
-    Calculate the number of items in the list for this URL
-    :param list_item: list of strings of numeric values
-    :return: number of items in the list
-    """
-    return len(list_item)
-
-
-def time_sum_url(list_item: list) -> float:
+def time_sum_url(list_item: List[str]) -> float:
     """
     Amount calculation all item in list for this url, if not calculation gives 'None'
     :param list_item: list of strings of numeric values
@@ -215,16 +180,7 @@ def time_sum_url(list_item: list) -> float:
     return sum_item
 
 
-def time_average(list_item: list) -> float:
-    """
-    The function determines the average values request time in list for a given URL
-    :param list_item: list with values request time
-    :return: the average request time
-    """
-    return time_sum_url(list_item) / len(list_item)
-
-
-def time_max(list_item: list) -> float:
+def time_max(list_item: List[str]) -> float:
     """
     The function determines the maximum request time in list for a given URL
     :param list_item: list with values request time
@@ -237,43 +193,7 @@ def time_max(list_item: list) -> float:
     return max_value_item
 
 
-def value_percent(value_item: float, value_all: float) -> float:
-    """
-    Calculates the percentages for a given URL relative to all queries
-    :param value_item: value for a given URL
-    :param value_all: value for to all URL
-    :return: value calculated as a percentage
-    """
-    return value_item / value_all * 100
-
-
-def count_total_request(data_mas: dict) -> int:
-    """
-    Function counts the total number of queries in the "data_mas"
-    :param data_mas: dictionary {'url1': [time_request1, time_request2, ...], 'url2':...}
-    :return: total number of queries
-    """
-    count_request = 0
-    for index in data_mas.keys():
-        count_request += len(data_mas[index])
-    return count_request
-
-
-def time_total_request(data_mas: dict) -> float:
-    """
-    The function counts the total request time in the "data_mas".
-    :param data_mas: dictionary {'url': [time_request1, time_request2, ...]}
-    :return: total time request
-    """
-    count_request_time = 0
-    for index in data_mas.keys():
-        for time_str in data_mas[index]:
-            if time_str != "":
-                count_request_time += float(time_str)
-    return count_request_time
-
-
-def median_time_request(list_item: list) -> float:
+def median_time_request(list_item: List[str]) -> float:
     """
     Function to find the median value of a list
     :param list_item: given list (int, float) value [7,4,3,2,5,6,1]
@@ -286,7 +206,10 @@ def median_time_request(list_item: list) -> float:
     return list_item_float[len(list_item_float) // 2]
 
 
-def write_url_dict(url_str: str, line_time: list, total_count: int, total_time: float) -> dict:
+def write_url_dict(url_str: str,
+                   line_time: List[str],
+                   total_count: int,
+                   total_time: float) -> dict:
     """
     The function forms a string of of static parameters parameters for a given URL in the form of a dictionary
     :param url_str: name URL
@@ -298,33 +221,57 @@ def write_url_dict(url_str: str, line_time: list, total_count: int, total_time: 
     count_r = len(line_time)
     time_sum = time_sum_url(line_time)
     url_dict_stat = {"count": count_r,
-                     "time_avg": time_average(line_time),
+                     "time_avg": time_sum_url(line_time) / len(line_time),
                      "time_max": time_max(line_time),
                      "time_sum": time_sum,
                      "url": url_str,
                      "time_med": median_time_request(line_time),
-                     "time_perc": value_percent(time_sum, total_time),
-                     "count_perc": value_percent(count_r, total_count)}
+                     "time_perc": time_sum / total_time * 100,
+                     "count_perc": count_r / total_count * 100}
     return url_dict_stat
 
 
-def create_result_mas(data_mas: dict) -> list:
+def _create_result_mas(data_mas: dict) -> List[dict]:
     """
     Create function sorted by "max_time" list of statistics data
     :param data_mas : source dictionary of url and time request
     :return: list dictionary of url and request statistics
     """
-    total_count = count_total_request(data_mas)
-    total_time = time_total_request(data_mas)
+    total_count = 0
+    total_time = 0
+    for index in data_mas.keys():
+        total_count += len(data_mas[index])
+        for time_str in data_mas[index]:
+            total_time += float(time_str)
     result_mas = []
-
     for item_mas in data_mas.keys():
-        result_mas.append(write_url_dict(item_mas, data_mas[item_mas], total_count, total_time))
-    result_mas_sort = sorted(result_mas, key=operator.itemgetter("time_sum"), reverse=True)
-    return result_mas_sort
+        result_mas.append(write_url_dict(item_mas,
+                                         data_mas[item_mas],
+                                         total_count,
+                                         total_time))
+    return sorted(result_mas,
+                  key=operator.itemgetter("time_sum"),
+                  reverse=True)
 
 
-def create_report(conf: dict, log_file_name: str, result_mas_sort: list):
+def _insertion_data_in_template(all_path_template_file: str,
+                                result_mas: List[dict],
+                                num_rep: int) -> str:
+    """
+    The function of inserting data into a template
+    :param all_path_template_file:  path template file
+    :param result_mas: mass with data
+    :param num_rep: number of urls in saved report
+    :return: formatted report text
+    """
+    with open(all_path_template_file, 'r', encoding='utf-8') as file_template_report:
+        template_text = file_template_report.read()
+    size_rep = num_rep if num_rep < len(result_mas) else len(result_mas)
+    report_text = string.Template(template_text)
+    return report_text.safe_substitute(table_json=result_mas[0:size_rep])
+
+
+def creation_report(conf: dict, log_file: NamedTuple, report_text: str):
     """
     The function of creating a report file in the form of a table
     :param conf: dictionary with structure containing 
@@ -335,38 +282,15 @@ def create_report(conf: dict, log_file_name: str, result_mas_sort: list):
     :param result_mas_sort: sorted list of statistics [{},{},..]
     :return: 
     """
-    with open(template_report, 'r', encoding='utf-8') as file_template_report:
-        try:
-            template_text = file_template_report.read()
-        except Exception as er:
-            logging.exception('Error load template report: %s', er)
-    if conf["REPORT_SIZE"] < len(result_mas_sort):
-        size_rep = conf["REPORT_SIZE"]
-    else:
-        size_rep = len(result_mas_sort)
-    report_text = string.Template(template_text)
-    report_text_file = report_text.safe_substitute(table_json=result_mas_sort[0:size_rep])
-    group_str_namefile = re.match(MASK_LOG, log_file_name)
-    date_string = group_str_namefile.group(1)
-    date_typedate = datetime.datetime.strptime(date_string, "%Y%m%d").date()
-    report_name_tmp = 'report-{0}.tmp'.format(datetime.datetime.strftime(date_typedate, "%Y.%m.%d"))
-    path_rep_file_tmp = os.path.join(conf['REPORT_DIR'], report_name_tmp)
+    report_tmp = 'report-{0}.tmp'.format(datetime.datetime.strftime(log_file.date,
+                                                                    "%Y.%m.%d"))
+    path_rep_file_tmp = os.path.join(conf['REPORT_DIR'], report_tmp)
     with open(path_rep_file_tmp, 'w', encoding='utf-8') as file_report:
-        try:
-            file_report.write(report_text_file)
-        except Exception as er:
-            logging.exception('Error create report %s: %s', path_rep_file_tmp, er)
+        file_report.write(report_text)
     report_name = pathlib.Path(path_rep_file_tmp).stem + ".html"
     new_name_rep_file = os.path.join(conf["REPORT_DIR"], report_name)
-    try:
+    if os.path.exists(path_rep_file_tmp):
         os.rename(path_rep_file_tmp, new_name_rep_file)
-    except:
-        logging.exception("Report %s - failed to create", report_name)
-    logging.info("Create report file - %s ", report_name)
-    if "jquery.tablesorter.min.js" not in os.listdir(conf["REPORT_DIR"]):
-        if "jquery.tablesorter.min.js" in os.listdir("./"):
-            shutil.copy(r"jquery.tablesorter.min.js",
-                        os.path.join(conf["REPORT_DIR"], "jquery.tablesorter.min.js"))
 
 
 def init_logging(conf: dict):
@@ -378,11 +302,14 @@ def init_logging(conf: dict):
     :return:
     """
     format_log = '[%(asctime)s] %(levelname).1s %(message)s'
-    logging.basicConfig(
-        filename=conf["LOG_ANALYZER_PATH"],
-        format=format_log,
-        datefmt='%Y.%m.%d %H:%M:%S',
-        level=conf["STATUS_LOGGING"])
+    try:
+        logging.basicConfig(
+            filename=conf["LOG_ANALYZER_PATH"],
+            format=format_log,
+            datefmt='%Y.%m.%d %H:%M:%S',
+            level=conf["STATUS_LOGGING"])
+    except Exception as error_log:
+        raise EnvironmentError('Error loging: {}'.format(error_log))
 
 
 def parser_name_config() -> str:
@@ -408,7 +335,8 @@ def configs_merger(conf: dict, default_conf_path=DEFAULT_CONFIG_PATH,
     config_name = parser_name_config() if parser_name_config() else default_conf_f_name
     try:
         with open(os.path.join(default_conf_path, config_name)) as id_file_config:
-            config_from_file = json.load(id_file_config, encoding="utf-8")
+            config_from_file = json.load(id_file_config,
+                                         encoding="utf-8")
     except Exception as error_work_config:
         sys.exit(error_work_config)
     conf.update(config_from_file)
@@ -424,10 +352,18 @@ def main(config):
     logging.info("Start. Load config %s", config)
     log_name = search_last_log(config)
     if not report_processing_check(config, log_name):
-        logging.info('Last raw log found: %s', log_name)
-        mass_passed_data = parsing_log(config, log_name)
+        logging.info('Last raw log found: %s',
+                     log_name)
+        mass_passed_data = parsed_string_log(config,
+                                             log_name)
         mass_passed_data_sort = sort_list_url(mass_passed_data)
-        create_report(config, log_name, create_result_mas(mass_passed_data_sort))
+
+        report_text = _insertion_data_in_template(PATH_TEMPLATE_REPORT,
+                                                  _create_result_mas(mass_passed_data_sort),
+                                                  config["REPORT_SIZE"])
+        creation_report(config,
+                        log_name,
+                        report_text)
     else:
         logging.info('Last log has already been processed')
 
