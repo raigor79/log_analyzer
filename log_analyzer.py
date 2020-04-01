@@ -372,6 +372,6 @@ if __name__ == "__main__":
     try:
         main(default_config)
     except KeyboardInterrupt:
-        logging.info('Script the script was interrupted by clicking Ctrl+C')
+        logging.info('Script was interrupted by clicking Ctrl+C')
     except Exception as err:
         logging.exception(err)
